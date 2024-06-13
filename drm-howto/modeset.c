@@ -183,60 +183,68 @@ static struct modeset_dev *modeset_list = NULL;
  * unused and no monitor is plugged in. So we can ignore this connector.
  */
 
-static int modeset_prepare(int fd)
-{
-	drmModeRes *res;
-	drmModeConnector *conn;
-	unsigned int i;
-	struct modeset_dev *dev;
-	int ret;
+static int modeset_prepare(int fd) {
+    drmModeRes *res;
+    drmModeConnector *conn;
+    unsigned int i;
+    struct modeset_dev *dev;
+    int ret;
 
-	/* retrieve resources */
-	res = drmModeGetResources(fd);
-	if (!res) {
-		fprintf(stderr, "cannot retrieve DRM resources (%d): %m\n",
-			errno);
-		return -errno;
-	}
+    /* retrieve resources */
+    res = drmModeGetResources(fd);
+    if (!res) {
+        fprintf(stderr, "cannot retrieve DRM resources (%d): %m\n", errno);
+        return -errno;
+    }
 
-	/* iterate all connectors */
-	for (i = 0; i < res->count_connectors; ++i) {
-		/* get information for each connector */
-		conn = drmModeGetConnector(fd, res->connectors[i]);
-		if (!conn) {
-			fprintf(stderr, "cannot retrieve DRM connector %u:%u (%d): %m\n",
-				i, res->connectors[i], errno);
-			continue;
-		}
+    /* iterate all connectors */
+    for (i = 0; i < res->count_connectors; ++i) {
+        /* get information for each connector */
+        conn = drmModeGetConnector(fd, res->connectors[i]);
+        if (!conn) {
+            fprintf(stderr, "cannot retrieve DRM connector %u:%u (%d): %m\n",
+                    i, res->connectors[i], errno);
+            continue;
+        }
 
-		/* create a device structure */
-		dev = malloc(sizeof(*dev));
-		memset(dev, 0, sizeof(*dev));
-		dev->conn = conn->connector_id;
+        /* create a device structure */
+        dev = malloc(sizeof(*dev));
+        memset(dev, 0, sizeof(*dev));
+        dev->conn = conn->connector_id;
 
-		/* call helper function to prepare this connector */
-		ret = modeset_setup_dev(fd, res, conn, dev);
-		if (ret) {
-			if (ret != -ENOENT) {
-				errno = -ret;
-				fprintf(stderr, "cannot setup device for connector %u:%u (%d): %m\n",
-					i, res->connectors[i], errno);
-			}
-			free(dev);
-			drmModeFreeConnector(conn);
-			continue;
-		}
+        /* print all supported modes for this connector */
+        fprintf(stderr, "Connector %u supports %d modes:\n", conn->connector_id, conn->count_modes);
+        for (int j = 0; j < conn->count_modes; ++j) {
+            fprintf(stderr, "Mode %d: %ux%u@%uHz\n", j,
+                    conn->modes[j].hdisplay,
+                    conn->modes[j].vdisplay,
+                    conn->modes[j].vrefresh);
+        }
 
-		/* free connector data and link device into global list */
-		drmModeFreeConnector(conn);
-		dev->next = modeset_list;
-		modeset_list = dev;
-	}
+        /* call helper function to prepare this connector */
+        ret = modeset_setup_dev(fd, res, conn, dev);
+        if (ret) {
+            if (ret != -ENOENT) {
+                errno = -ret;
+                fprintf(stderr, "cannot setup device for connector %u:%u (%d): %m\n",
+                        i, res->connectors[i], errno);
+            }
+            free(dev);
+            drmModeFreeConnector(conn);
+            continue;
+        }
 
-	/* free resources again */
-	drmModeFreeResources(res);
-	return 0;
+        /* free connector data and link device into global list */
+        drmModeFreeConnector(conn);
+        dev->next = modeset_list;
+        modeset_list = dev;
+    }
+
+    /* free resources again */
+    drmModeFreeResources(res);
+    return 0;
 }
+
 
 /*
  * Now we dig deeper into setting up a single connector. As described earlier,
