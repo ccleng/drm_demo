@@ -296,7 +296,7 @@ static int modeset_setup_dev(int fd, drmModeRes *res, drmModeConnector *conn,
     /* find a specific mode, e.g., 1920x1080 */
     bool mode_found = false;
     for (int i = 0; i < conn->count_modes; i++) {
-        if (conn->modes[i].hdisplay == 1920 && conn->modes[i].vdisplay == 1080) {
+        if (conn->modes[i].hdisplay == 1280 && conn->modes[i].vdisplay == 720) {
             memcpy(&dev->mode, &conn->modes[i], sizeof(dev->mode));
             dev->width = conn->modes[i].hdisplay;
             dev->height = conn->modes[i].vdisplay;
@@ -652,37 +652,43 @@ static uint8_t next_color(bool *up, uint8_t cur, unsigned int mod)
  * beyond the scope of this document.
  */
 
-static void modeset_draw(void)
-{
-	uint8_t r, g, b;
-	bool r_up, g_up, b_up;
-	unsigned int i, j, k, off;
-	struct modeset_dev *iter;
+static void modeset_draw(void) {
+    uint8_t r, g, b;
+    bool r_up, g_up, b_up;
+    unsigned int i, j, k, off;
+    struct modeset_dev *iter;
+    int dev_index = 0; // 设备索引
 
-	srand(time(NULL));
-	r = rand() % 0xff;
-	g = rand() % 0xff;
-	b = rand() % 0xff;
-	r_up = g_up = b_up = true;
+    srand(time(NULL));
+    r = rand() % 0xff;
+    g = rand() % 0xff;
+    b = rand() % 0xff;
+    r_up = g_up = b_up = true;
 
-	for (i = 0; i < 50; ++i) {
-		r = next_color(&r_up, r, 20);
-		g = next_color(&g_up, g, 10);
-		b = next_color(&b_up, b, 5);
+    for (i = 0; i < 50; ++i) {
+        r = next_color(&r_up, r, 20);
+        g = next_color(&g_up, g, 10);
+        b = next_color(&b_up, b, 5);
 
-		for (iter = modeset_list; iter; iter = iter->next) {
-			for (j = 0; j < iter->height; ++j) {
-				for (k = 0; k < iter->width; ++k) {
-					off = iter->stride * j + k * 4;
-					*(uint32_t*)&iter->map[off] =
-						     (r << 16) | (g << 8) | b;
-				}
-			}
-		}
+        for (iter = modeset_list; iter; iter = iter->next) {
+            uint8_t dev_r = (r + dev_index * 30) % 256; // 给每个设备添加一个基于设备索引的偏移量
+            uint8_t dev_g = (g + dev_index * 60) % 256;
+            uint8_t dev_b = (b + dev_index * 90) % 256;
 
-		usleep(100000);
-	}
+            for (j = 0; j < iter->height; ++j) {
+                for (k = 0; k < iter->width; ++k) {
+                    off = iter->stride * j + k * 4;
+                    *(uint32_t*)&iter->map[off] = (dev_r << 16) | (dev_g << 8) | dev_b;
+                }
+            }
+            dev_index++; // 更新设备索引
+        }
+
+        usleep(100000); // 控制更新频率
+        dev_index = 0; // 重置设备索引
+    }
 }
+
 
 /*
  * modeset_cleanup(fd): This cleans up all the devices we created during
