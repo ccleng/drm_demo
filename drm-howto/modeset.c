@@ -276,49 +276,63 @@ static int modeset_prepare(int fd) {
  */
 
 static int modeset_setup_dev(int fd, drmModeRes *res, drmModeConnector *conn,
-			     struct modeset_dev *dev)
-{
-	int ret;
+                             struct modeset_dev *dev) {
+    int ret;
 
-	/* check if a monitor is connected */
-	if (conn->connection != DRM_MODE_CONNECTED) {
-		fprintf(stderr, "ignoring unused connector %u\n",
-			conn->connector_id);
-		return -ENOENT;
-	}
+    /* check if a monitor is connected */
+    if (conn->connection != DRM_MODE_CONNECTED) {
+        fprintf(stderr, "ignoring unused connector %u\n",
+                conn->connector_id);
+        return -ENOENT;
+    }
 
-	/* check if there is at least one valid mode */
-	if (conn->count_modes == 0) {
-		fprintf(stderr, "no valid mode for connector %u\n",
-			conn->connector_id);
-		return -EFAULT;
-	}
+    /* check if there is at least one valid mode */
+    if (conn->count_modes == 0) {
+        fprintf(stderr, "no valid mode for connector %u\n",
+                conn->connector_id);
+        return -EFAULT;
+    }
 
-	/* copy the mode information into our device structure */
-	memcpy(&dev->mode, &conn->modes[0], sizeof(dev->mode));
-	dev->width = conn->modes[0].hdisplay;
-	dev->height = conn->modes[0].vdisplay;
-	fprintf(stderr, "mode for connector %u is %ux%u\n",
-		conn->connector_id, dev->width, dev->height);
+    /* find a specific mode, e.g., 1920x1080 */
+    bool mode_found = false;
+    for (int i = 0; i < conn->count_modes; i++) {
+        if (conn->modes[i].hdisplay == 1920 && conn->modes[i].vdisplay == 1080) {
+            memcpy(&dev->mode, &conn->modes[i], sizeof(dev->mode));
+            dev->width = conn->modes[i].hdisplay;
+            dev->height = conn->modes[i].vdisplay;
+            mode_found = true;
+            break;
+        }
+    }
 
-	/* find a crtc for this connector */
-	ret = modeset_find_crtc(fd, res, conn, dev);
-	if (ret) {
-		fprintf(stderr, "no valid crtc for connector %u\n",
-			conn->connector_id);
-		return ret;
-	}
+    if (!mode_found) {
+        fprintf(stderr, "desired mode 1920x1080 not found for connector %u\n",
+                conn->connector_id);
+        return -EINVAL;
+    }
 
-	/* create a framebuffer for this CRTC */
-	ret = modeset_create_fb(fd, dev);
-	if (ret) {
-		fprintf(stderr, "cannot create framebuffer for connector %u\n",
-			conn->connector_id);
-		return ret;
-	}
+    fprintf(stderr, "selected mode for connector %u is %ux%u\n",
+            conn->connector_id, dev->width, dev->height);
 
-	return 0;
+    /* find a crtc for this connector */
+    ret = modeset_find_crtc(fd, res, conn, dev);
+    if (ret) {
+        fprintf(stderr, "no valid crtc for connector %u\n",
+                conn->connector_id);
+        return ret;
+    }
+
+    /* create a framebuffer for this CRTC */
+    ret = modeset_create_fb(fd, dev);
+    if (ret) {
+        fprintf(stderr, "cannot create framebuffer for connector %u\n",
+                conn->connector_id);
+        return ret;
+    }
+
+    return 0;
 }
+
 
 /*
  * modeset_find_crtc(fd, res, conn, dev): This small helper tries to find a
